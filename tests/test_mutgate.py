@@ -208,6 +208,24 @@ class TestGatesThatCannotFail:
         r = _run([m], toy)
         assert r.verdicts[0].status == "ERROR" and "cut short" in r.verdicts[0].detail
 
+    def test_an_interrupted_run_with_a_partial_fired_set_is_an_error(self, toy):
+        """A conftest that sets session.shouldstop after the first failure: pytest exits 2
+        with ONE failure in the summary and "!!! Interrupted !!!", not the maxfail line.
+        Only exit codes 0 and 1 mean the loop ran to completion (review, third round)."""
+        (toy / "tests" / "conftest.py").write_text(
+            "def pytest_runtest_logreport(report):\n"
+            "    if report.failed:\n"
+            "        import pytest\n"
+            "        _SESSION[0].shouldstop = 'custom stop'\n"
+            "_SESSION = [None]\n"
+            "def pytest_sessionstart(session):\n    _SESSION[0] = session\n")
+        m = Mutation("tie-to-higher-index", "toy/engine.py",
+                     old="if (birth[a], -a) >= (birth[b], -b):", new="if (birth[a], a) >= (birth[b], b):",
+                     fires=("test_tie_goes_to_lower_index",))
+        r = _run([m], toy)
+        v = r.verdicts[0]
+        assert v.status == "ERROR" and "partial" in v.detail, v
+
     def test_a_bare_string_or_empty_fragment_is_refused(self):
         """`fires="TestElderRule"` would become thirteen one-letter fragments, each matching
         every node id, and every contract would read OK (item 3)."""

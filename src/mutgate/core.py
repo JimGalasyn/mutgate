@@ -329,9 +329,14 @@ def _classify(m: Mutation, rc: int, fired: list[str], tail: str) -> Verdict:
         # the gate that cannot fail, in the classifier itself: an invisible mutation that
         # broke the suite would read OK, a firing one DECORATION (review 2026-09-07, item 2)
         return Verdict(m, "ERROR", fired_t, detail=f"{_NO_SUMMARY}\n{tail}")
-    if rc in (2, 3, 4, 5) and not fired:
-        why = {2: "interrupted or collection failed (does the mutated file still compile?)",
-               3: "pytest internal error", 4: "pytest usage error", 5: "no tests collected"}[rc]
+    if rc not in (0, 1):
+        # only 0 and 1 mean the test loop ran to completion. An interrupted run (exit 2)
+        # can carry a PARTIAL fired set -- a conftest setting session.shouldstop after the
+        # first failure gives one failure in the summary and "!!! Interrupted !!!", not the
+        # maxfail line -- and a partial set is never a verdict (review, third round)
+        why = {2: "interrupted, or collection failed (does the mutated file still compile?); "
+                  "any fired set is partial",
+               3: "pytest internal error", 4: "pytest usage error", 5: "no tests collected"}.get(rc, f"pytest exit {rc}")
         return Verdict(m, "ERROR", fired_t, detail=f"{why}\n{tail}")
     if m.invisible:
         return Verdict(m, "VISIBLE" if fired else "OK", fired_t)
@@ -370,7 +375,7 @@ def run(mutations: Iterable[Mutation], root: Path, tests: Sequence[str],
     try:
         log(f"sandbox {sb.dir}")
         rc, failed, tail = run_pytest(sb.dir, tests, python, paths, extra_pytest_args, timeout=timeout)
-        if rc in (TIMEOUT, CUT_SHORT) or (rc in (1, 2, 3, 4, 5) and not failed):
+        if rc not in (0, 1) or (rc == 1 and not failed):
             note = _NO_SUMMARY if rc == 1 else ""
             report.baseline_error = f"baseline could not run (pytest exit {rc}) {note}\n{tail}"
             return report

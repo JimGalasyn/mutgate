@@ -31,7 +31,7 @@ MUTATIONS = [
              may_fire=("test_cli_run_and_list",),
              note="the CLI test runs two mutations in sequence and sees the unrestored file too"),
     Mutation("error-reads-as-fired", "src/mutgate/core.py",
-             old="    if rc in (2, 3, 4, 5) and not fired:\n        why", new="    if False:\n        why",
+             old="    if rc not in (0, 1):\n        # only 0 and 1", new="    if False:\n        # only 0 and 1",
              fires=("test_error_when_the_mutation_does_not_compile",)),
     # the review of the first commit (2026-09-07): three silent false passes in the checker
     Mutation("summary-gate-off", "src/mutgate/core.py",
@@ -58,4 +58,8 @@ MUTATIONS = [
     Mutation("cut-short-tell-ignored", "src/mutgate/core.py",
              old='    if _CUT_SHORT_LINE.search(proc.stdout):', new='    if False:',
              fires=("test_a_conftest_that_forces_maxfail_is_an_error",)),
+    Mutation("interrupted-with-partial-set-is-a-verdict", "src/mutgate/core.py",
+             old="    if rc not in (0, 1):\n        # only 0 and 1", new="    if rc not in (0, 1) and not fired:\n        # only 0 and 1",
+             fires=("test_an_interrupted_run_with_a_partial_fired_set_is_an_error",),
+             note="review round 3: exit 2 with one failure parsed read OK"),
 ]

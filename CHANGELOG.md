@@ -17,6 +17,10 @@ project before it was fixed:
   fired set with a consistent-looking exit**, so an OVERREACH read OK. mutgate now owns
   `--maxfail=0` after every user argument, and pytest's own "stopping after N failures"
   line (a conftest can still force it) makes the run `ERROR`. Second review round.
+- **An interrupted run with a partial fired set read as a verdict** (a conftest setting
+  `session.shouldstop` after the first failure: exit 2, one failure parsed). Only exit codes
+  0 and 1 now count as a completed run; anything else is `ERROR` whatever parsed. Third
+  review round.
 - Node ids containing " - " inside a parametrisation are no longer truncated; `--timeout`
   makes a hanging suite an `ERROR`; a missing `--python` is a usage error; `ROOT` is
   relative to the declaration file; the `git ls-files` sandbox and real PYTHONPATH
