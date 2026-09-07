@@ -1,6 +1,16 @@
 # mutgate
 
-[![PyPI](https://img.shields.io/pypi/v/mutgate.svg?cacheSeconds=3600)](https://pypi.org/project/mutgate/) [![CI](https://github.com/JimGalasyn/mutgate/actions/workflows/ci.yml/badge.svg)](https://github.com/JimGalasyn/mutgate/actions/workflows/ci.yml) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22649033.svg)](https://doi.org/10.5281/zenodo.22649033)
+[![CI](https://github.com/JimGalasyn/mutgate/actions/workflows/ci.yml/badge.svg)](https://github.com/JimGalasyn/mutgate/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/JimGalasyn/mutgate/branch/main/graph/badge.svg)](https://codecov.io/gh/JimGalasyn/mutgate)
+[![CodeQL](https://github.com/JimGalasyn/mutgate/actions/workflows/codeql.yml/badge.svg)](https://github.com/JimGalasyn/mutgate/actions/workflows/codeql.yml)
+[![Release](https://img.shields.io/github/v/release/JimGalasyn/mutgate?include_prereleases)](https://github.com/JimGalasyn/mutgate/releases)
+[![PyPI](https://img.shields.io/pypi/v/mutgate?cacheSeconds=3600)](https://pypi.org/project/mutgate/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22649033.svg)](https://doi.org/10.5281/zenodo.22649033)
+[![Python](https://img.shields.io/pypi/pyversions/mutgate?cacheSeconds=3600)](https://pypi.org/project/mutgate/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+> **Status: alpha (0.1.x).** The verdict names, the `Mutation` fields and the exit-code
+> contract are stable; the declaration file may gain fields (`control=` is planned).
 
 **Named mutations as contracts on a test suite.** Each mutation is a deliberate, named
 change to the code under test, together with the list of tests it must turn red — or the
