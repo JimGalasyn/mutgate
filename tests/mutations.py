@@ -32,7 +32,9 @@ MUTATIONS = [
              note="the CLI test runs two mutations in sequence and sees the unrestored file too"),
     Mutation("error-reads-as-fired", "src/mutgate/core.py",
              old="    if rc not in (0, 1):\n        # only 0 and 1", new="    if False:\n        # only 0 and 1",
-             fires=("test_error_when_the_mutation_does_not_compile",)),
+             fires=("test_error_when_the_mutation_does_not_compile",),
+             may_fire=("test_an_interrupted_run_with_a_partial_fired_set_is_an_error",),
+             note="the interrupted-run test goes through the same branch and detects this too"),
     # the review of the first commit (2026-09-07): three silent false passes in the checker
     Mutation("summary-gate-off", "src/mutgate/core.py",
              old="    if rc == 1 and not fired:\n        # the gate", new="    if False:\n        # the gate",
