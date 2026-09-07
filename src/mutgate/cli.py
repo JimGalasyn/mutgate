@@ -7,6 +7,7 @@ declaration cannot be loaded.
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
 from pathlib import Path
 
@@ -25,6 +26,8 @@ def _parser() -> argparse.ArgumentParser:
     r.add_argument("--tests", nargs="+", help="pytest targets (override the file's TESTS)")
     r.add_argument("--only", nargs="+", metavar="NAME", help="run only these mutations")
     r.add_argument("--python", help="interpreter to run pytest with (default: this one)")
+    r.add_argument("--timeout", type=float, default=None, metavar="SECONDS",
+                   help="abort a pytest run that takes longer (verdict ERROR)")
     r.add_argument("--pytest-arg", action="append", default=[], metavar="ARG",
                    help="extra argument passed to pytest (repeatable)")
     r.add_argument("--markdown", action="store_true", help="print the build-record table instead of the plain one")
@@ -52,10 +55,18 @@ def main(argv=None) -> int:
         print(f"\nroot {decl.root}\ntests {' '.join(decl.tests)}\npaths {' '.join(decl.paths)}")
         return 0
     log = (lambda s: print(f"mutgate: {s}", file=sys.stderr, flush=True)) if args.verbose else None
-    report = run(decl.mutations, decl.root, args.tests or decl.tests,
-                 python=args.python or decl.python or sys.executable, paths=decl.paths,
-                 only=args.only, keep=args.keep, stop_early=args.stop,
-                 extra_pytest_args=args.pytest_arg, log=log)
+    python = args.python or decl.python or sys.executable
+    if not (Path(python).is_file() or shutil.which(python)):
+        print(f"mutgate: interpreter not found: {python}", file=sys.stderr)
+        return 2
+    try:
+        report = run(decl.mutations, decl.root, args.tests or decl.tests,
+                     python=python, paths=decl.paths, only=args.only, keep=args.keep,
+                     stop_early=args.stop, extra_pytest_args=args.pytest_arg, log=log,
+                     timeout=args.timeout)
+    except ValueError as exc:
+        print(f"mutgate: {exc}", file=sys.stderr)
+        return 2
     if report.baseline_failed or report.baseline_error:
         print(report.table())
         return 2

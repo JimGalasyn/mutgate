@@ -168,6 +168,53 @@ class TestVerdicts:
         assert "BASELINE RED" in r.table()
 
 
+class TestGatesThatCannotFail:
+    """Review 2026-09-07: three silent false passes in the contract check itself."""
+
+    def test_suppressed_summary_is_an_error_not_a_verdict(self, toy):
+        """A project whose pytest config hides the short summary: pytest exits 1 but no
+        failure can be read. That must be ERROR -- an invisible mutation that broke the
+        suite would otherwise read OK (item 2)."""
+        (toy / "pyproject.toml").write_text('[project]\nname = "toy"\nversion = "0"\n'
+                                            '[tool.pytest.ini_options]\naddopts = "--no-summary"\n')
+        m = Mutation("tie-to-higher-index", "toy/engine.py",
+                     old="if (birth[a], -a) >= (birth[b], -b):", new="if (birth[a], a) >= (birth[b], b):",
+                     invisible=True)
+        r = _run([m], toy)
+        assert r.verdicts[0].status == "ERROR" and "summary" in r.verdicts[0].detail
+
+    def test_a_bare_string_or_empty_fragment_is_refused(self):
+        """`fires="TestElderRule"` would become thirteen one-letter fragments, each matching
+        every node id, and every contract would read OK (item 3)."""
+        with pytest.raises(ValueError, match="not a string"):
+            Mutation("x", "f", old="a", new="b", fires="TestElderRule")
+        with pytest.raises(ValueError, match="non-empty"):
+            Mutation("x", "f", old="a", new="b", fires=("",))
+        with pytest.raises(ValueError, match="not a string"):
+            Mutation("x", "f", old="a", new="b", fires=("T",), may_fire="Other")
+
+    def test_unknown_only_name_and_empty_list_are_errors(self, toy):
+        """A typo in --only, or an emptied MUTATIONS list, must not pass green (item 4)."""
+        m = Mutation("cut-strict", "toy/engine.py", old="if x >= s]", new="if x > s]", fires=("TestCut",))
+        with pytest.raises(ValueError, match="names no declared mutation"):
+            _run([m], toy, only=["cut-strikt"])
+        with pytest.raises(ValueError, match="no mutations"):
+            _run([], toy)
+
+    def test_parametrised_ids_with_a_dash_are_kept_whole(self, toy):
+        from mutgate.core import _node_id
+        assert _node_id("tests/t.py::test_x[a - b] - AssertionError: 1 - 2") == "tests/t.py::test_x[a - b]"
+        assert _node_id("tests/t.py::test_x - AssertionError") == "tests/t.py::test_x"
+        assert _node_id("tests/t.py::test_x") == "tests/t.py::test_x"
+
+    def test_timeout_is_an_error(self, toy):
+        hang = TOY_TESTS + "\n\ndef test_hang():\n    import time; time.sleep(30)\n"
+        (toy / "tests" / "test_toy.py").write_text(hang)
+        m = Mutation("cut-strict", "toy/engine.py", old="if x >= s]", new="if x > s]", fires=("TestCut",))
+        r = run([m], toy, ("tests",), python=sys.executable, paths=(".",), timeout=3)
+        assert r.baseline_error and "exceeded" in r.baseline_error
+
+
 # ---------------------------------------------------------------------------------------
 # the sandbox never touches the working tree
 # ---------------------------------------------------------------------------------------
@@ -198,11 +245,58 @@ class TestSandbox:
         rels = {str(f.relative_to(toy)) for f in project_files(toy)}
         assert "toy/engine.py" in rels and not any(".venv" in r or "__pycache__" in r for r in rels)
 
-    def test_sandbox_shadows_an_installed_copy(self, toy):
-        """PYTHONPATH puts the sandbox first, so the mutated copy is the one imported even
-        if the same package is importable from elsewhere."""
-        rc, failed, _ = run_pytest(Sandbox(toy).dir, ("tests",), sys.executable, (".",))
-        assert rc == 0 and failed == []
+    def test_sandbox_shadows_an_installed_copy(self, toy, tmp_path):
+        """PYTHONPATH puts the sandbox first, so the sandbox copy is the one imported even
+        when a BROKEN copy of the same package sits on PYTHONPATH already."""
+        import os
+        elsewhere = tmp_path / "elsewhere"
+        (elsewhere / "toy").mkdir(parents=True)
+        (elsewhere / "toy" / "__init__.py").write_text("")
+        (elsewhere / "toy" / "engine.py").write_text("raise RuntimeError('the wrong copy was imported')\n")
+        env = {**os.environ, "PYTHONPATH": str(elsewhere)}
+        sb = Sandbox(toy)
+        try:
+            rc, failed, tail = run_pytest(sb.dir, ("tests",), sys.executable, (".",), env=env)
+        finally:
+            sb.close()
+        assert rc == 0 and failed == [], tail
+        # and the broken copy IS what a bare interpreter would see
+        out = subprocess.run([sys.executable, "-c", "import toy.engine"], env=env, capture_output=True, text=True)
+        assert out.returncode != 0
+
+    def test_sandbox_survives_a_symlinked_tmpdir(self, toy, tmp_path, monkeypatch):
+        """macOS keeps TMPDIR behind a symlink (/var -> /private/var); the containment check
+        must compare resolved paths (review 2026-09-07, item 1)."""
+        import tempfile
+        real = tmp_path / "real_tmp"; real.mkdir()
+        link = tmp_path / "link_tmp"; link.symlink_to(real, target_is_directory=True)
+        monkeypatch.setattr(tempfile, "tempdir", str(link))
+        sb = Sandbox(toy)
+        try:
+            assert sb.path("toy/engine.py").is_file()
+        finally:
+            sb.close()
+
+    def test_git_repo_sandbox_takes_untracked_and_skips_ignored(self, toy):
+        """The `git ls-files` branch: tracked and untracked-but-not-ignored files are copied,
+        ignored ones are not, and an uncommitted edit is what gets mutated."""
+        subprocess.run(["git", "init", "-q", str(toy)], check=True)
+        (toy / ".gitignore").write_text(".venv/\n*.log\n")
+        subprocess.run(["git", "-C", str(toy), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(toy), "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"], check=True)
+        (toy / ".venv").mkdir(); (toy / ".venv" / "x.py").write_text("")
+        (toy / "run.log").write_text("")
+        (toy / "toy" / "extra.py").write_text("NEW = 1\n")                       # untracked, not ignored
+        (toy / "toy" / "engine.py").write_text(TOY_ENGINE + "\nEDITED = True\n")  # uncommitted edit
+        rels = {str(f.relative_to(toy)) for f in project_files(toy)}
+        assert "toy/extra.py" in rels and "toy/engine.py" in rels
+        assert not any(r.startswith(".venv") or r.endswith(".log") for r in rels)
+        sb = Sandbox(toy)
+        try:
+            assert "EDITED = True" in (sb.dir / "toy" / "engine.py").read_text()
+            assert not (sb.dir / ".git").exists()
+        finally:
+            sb.close()
 
 
 # ---------------------------------------------------------------------------------------
@@ -226,6 +320,10 @@ class TestDeclarationAndCli:
         d = load(toy / "tests" / "mutations.py")
         assert [m.name for m in d.mutations] == ["cut-strict", "comment"]
         assert d.root == toy.resolve() and d.tests == ("tests",) and d.paths == (".",)
+
+    def test_root_is_relative_to_the_declaration_file(self, toy):
+        (toy / "tests" / "m.py").write_text(DECL + 'ROOT = ".."\n')
+        assert load(toy / "tests" / "m.py").root == toy.resolve()
 
     def test_load_refuses_duplicates_and_non_mutations(self, toy):
         (toy / "tests" / "bad.py").write_text(DECL.replace('"comment"', '"cut-strict"'))
@@ -261,3 +359,10 @@ class TestDeclarationAndCli:
         out = subprocess.run([sys.executable, "-m", "mutgate", "run", str(toy / "tests" / "mutations.py")],
                              capture_output=True, text=True, env=env)
         assert out.returncode == 1 and "DECORATION" in out.stdout
+        # usage errors: a missing interpreter, a typo in --only
+        out = subprocess.run([sys.executable, "-m", "mutgate", "run", str(toy / "tests" / "mutations.py"),
+                              "--python", "/no/such/python"], capture_output=True, text=True, env=env)
+        assert out.returncode == 2 and "not found" in out.stderr
+        out = subprocess.run([sys.executable, "-m", "mutgate", "run", str(toy / "tests" / "mutations.py"),
+                              "--only", "nope"], capture_output=True, text=True, env=env)
+        assert out.returncode == 2 and "names no declared mutation" in out.stderr

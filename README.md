@@ -58,6 +58,12 @@ the result is written into a design note as prose. `mutgate` makes that a checke
   temporary copy (`git ls-files`, so uncommitted work is included and the venv is not), and
   the copy is put first on `PYTHONPATH` so an editable install elsewhere cannot shadow it.
 - **a red baseline aborts.** Mutations mean nothing on a suite that already fails.
+- **a run whose failures cannot be read is an error, never a verdict.** If the project's
+  pytest configuration suppresses the short summary (`--no-summary`), pytest's exit code
+  says "failed" while nothing parses; that is reported as `ERROR`, not silently as `OK`.
+
+The sandbox holds the project's files but not its `.git`; a suite that shells out to git
+(a `setuptools_scm`-style version check, say) goes red at baseline and says so.
 
 ## What it is not
 
@@ -75,7 +81,7 @@ A Python file (conventionally `tests/mutations.py`) defining:
 | `MUTATIONS` | yes | a sequence of `Mutation` |
 | `TESTS` | no | pytest targets; default: the declaration file's own directory |
 | `PATHS` | no | `PYTHONPATH` entries relative to the root; default `("src", ".")` |
-| `ROOT` | no | project root; default: the nearest ancestor with `pyproject.toml` or `.git` |
+| `ROOT` | no | project root, relative to the declaration file; default: the nearest ancestor with `pyproject.toml` or `.git` |
 | `PYTHON` | no | interpreter to run pytest with; default: the one running `mutgate` |
 
 `Mutation(name, file, old, new, fires=(), may_fire=(), invisible=False, count=1, note="")`.

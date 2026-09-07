@@ -66,8 +66,17 @@ class Mutation:
     note: str = ""
 
     def __post_init__(self):
-        object.__setattr__(self, "fires", tuple(self.fires))
-        object.__setattr__(self, "may_fire", tuple(self.may_fire))
+        for attr in ("fires", "may_fire"):
+            val = getattr(self, attr)
+            if isinstance(val, str):
+                # a bare string would become its own letters, each matching every node id,
+                # and every contract would read OK (review 2026-09-07, item 3)
+                raise ValueError(f"{self.name}: {attr} must be a tuple of fragments, not a string; "
+                                 f"write ({val!r},)")
+            val = tuple(val)
+            if any(not isinstance(f, str) or not f.strip() for f in val):
+                raise ValueError(f"{self.name}: every {attr} entry must be a non-empty string")
+            object.__setattr__(self, attr, val)
         if not self.name:
             raise ValueError("a mutation needs a name")
         if self.old == self.new:
@@ -194,7 +203,9 @@ class Sandbox:
     def __init__(self, root: Path, keep: bool = False):
         self.root = Path(root).resolve()
         self.keep = keep
-        self.dir = Path(tempfile.mkdtemp(prefix="mutgate-"))
+        # resolved: on a symlinked TMPDIR (macOS /var -> /private/var) an unresolved dir
+        # fails its own containment check in `path` (review 2026-09-07, item 1)
+        self.dir = Path(tempfile.mkdtemp(prefix="mutgate-")).resolve()
         for src in project_files(self.root):
             rel = src.relative_to(self.root)
             dst = self.dir / rel
@@ -232,14 +243,35 @@ class Sandbox:
 # running pytest and reading which tests failed
 # ---------------------------------------------------------------------------------------
 
+def _node_id(rest: str) -> str:
+    """The node id at the start of a summary line's remainder: everything up to the first
+    " - " that is not inside a parametrisation bracket (ids like `test_x[a - b]` keep it)."""
+    depth = 0
+    i = 0
+    while i < len(rest):
+        ch = rest[i]
+        if ch == "[":
+            depth += 1
+        elif ch == "]" and depth:
+            depth -= 1
+        elif depth == 0 and rest.startswith(" - ", i):
+            return rest[:i].strip()
+        i += 1
+    return rest.strip()
+
+
+TIMEOUT = -9999   # return code standing for "pytest did not finish in time"
+
+
 def run_pytest(cwd: Path, tests: Sequence[str], python: str = sys.executable,
                paths: Sequence[str] = ("src", "."), extra_args: Sequence[str] = (),
-               env: Optional[dict] = None) -> tuple[int, list[str], str]:
+               env: Optional[dict] = None, timeout: Optional[float] = None) -> tuple[int, list[str], str]:
     """Run pytest in `cwd`; return (returncode, failing node ids, tail of the output).
 
     Failures are read from pytest's own short summary (`-rfE`), so node ids are exactly the
     ones a contract names. `paths` are prepended to PYTHONPATH relative to `cwd`, so an
-    editable install elsewhere cannot shadow the sandbox copy."""
+    editable install elsewhere cannot shadow the sandbox copy. A run that exceeds `timeout`
+    seconds returns `TIMEOUT` as the code."""
     e = dict(os.environ if env is None else env)
     pp = [str(Path(cwd) / p) for p in paths]
     if e.get("PYTHONPATH"):
@@ -248,11 +280,16 @@ def run_pytest(cwd: Path, tests: Sequence[str], python: str = sys.executable,
     e.setdefault("PYTHONDONTWRITEBYTECODE", "1")
     cmd = [python, "-m", "pytest", "-q", "-rfE", "-p", "no:cacheprovider", "--no-header",
            *extra_args, *tests]
-    proc = subprocess.run(cmd, cwd=str(cwd), env=e, capture_output=True, text=True)
+    try:
+        proc = subprocess.run(cmd, cwd=str(cwd), env=e, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        out = (exc.stdout or b"")
+        out = out.decode("utf-8", "replace") if isinstance(out, bytes) else out
+        return TIMEOUT, [], f"pytest exceeded {timeout} s\n" + "\n".join(out.strip().splitlines()[-25:])
     failed = []
     for line in proc.stdout.splitlines():
         if line.startswith("FAILED ") or line.startswith("ERROR "):
-            nid = line.split(" ", 1)[1].split(" - ", 1)[0].strip()
+            nid = _node_id(line.split(" ", 1)[1])
             # "ERROR tests/x.py" with no "::" is a COLLECTION error (the file did not
             # import), not a red test; it is reported through the return code instead
             if line.startswith("ERROR ") and "::" not in nid:
@@ -267,8 +304,18 @@ def run_pytest(cwd: Path, tests: Sequence[str], python: str = sys.executable,
 # the contract check
 # ---------------------------------------------------------------------------------------
 
+_NO_SUMMARY = ("pytest reported failures but none could be read from its short summary; is "
+               "the summary suppressed (addopts --no-summary / -p no:terminal)? mutgate needs -rfE")
+
+
 def _classify(m: Mutation, rc: int, fired: list[str], tail: str) -> Verdict:
     fired_t = tuple(fired)
+    if rc == TIMEOUT:
+        return Verdict(m, "ERROR", fired_t, detail=tail)
+    if rc == 1 and not fired:
+        # the gate that cannot fail, in the classifier itself: an invisible mutation that
+        # broke the suite would read OK, a firing one DECORATION (review 2026-09-07, item 2)
+        return Verdict(m, "ERROR", fired_t, detail=f"{_NO_SUMMARY}\n{tail}")
     if rc in (2, 3, 4, 5) and not fired:
         why = {2: "interrupted or collection failed (does the mutated file still compile?)",
                3: "pytest internal error", 4: "pytest usage error", 5: "no tests collected"}[rc]
@@ -288,7 +335,7 @@ def _classify(m: Mutation, rc: int, fired: list[str], tail: str) -> Verdict:
 def run(mutations: Iterable[Mutation], root: Path, tests: Sequence[str],
         python: str = sys.executable, paths: Sequence[str] = ("src", "."),
         only: Optional[Sequence[str]] = None, keep: bool = False, stop_early: bool = False,
-        extra_pytest_args: Sequence[str] = (), log=None) -> Report:
+        extra_pytest_args: Sequence[str] = (), log=None, timeout: Optional[float] = None) -> Report:
     """Apply each mutation in a sandbox copy of `root`, run `tests`, and judge the contract.
 
     The baseline (no mutation) runs first; if it is red the report says so and nothing is
@@ -296,14 +343,23 @@ def run(mutations: Iterable[Mutation], root: Path, tests: Sequence[str],
     root = Path(root).resolve()
     tests = tuple(tests)
     report = Report(root=root, tests=tests)
-    mutations = [m for m in mutations if only is None or m.name in only]
+    mutations = list(mutations)
+    if only is not None:
+        known = {m.name for m in mutations}
+        unknown = [n for n in only if n not in known]
+        if unknown:
+            raise ValueError(f"--only names no declared mutation: {unknown}")
+        mutations = [m for m in mutations if m.name in only]
+    if not mutations:
+        raise ValueError("no mutations to run: an emptied declaration must not pass green")
     log = log or (lambda s: None)
     sb = Sandbox(root, keep=keep)
     try:
         log(f"sandbox {sb.dir}")
-        rc, failed, tail = run_pytest(sb.dir, tests, python, paths, extra_pytest_args)
-        if rc in (2, 3, 4, 5) and not failed:
-            report.baseline_error = f"baseline could not run (pytest exit {rc})\n{tail}"
+        rc, failed, tail = run_pytest(sb.dir, tests, python, paths, extra_pytest_args, timeout=timeout)
+        if rc == TIMEOUT or (rc in (1, 2, 3, 4, 5) and not failed):
+            note = _NO_SUMMARY if rc == 1 else ""
+            report.baseline_error = f"baseline could not run (pytest exit {rc}) {note}\n{tail}"
             return report
         if failed:
             report.baseline_failed = tuple(failed)
@@ -315,7 +371,8 @@ def run(mutations: Iterable[Mutation], root: Path, tests: Sequence[str],
                 v = Verdict(m, "NOT_APPLIED", detail=detail)
             else:
                 try:
-                    rc, failed, tail = run_pytest(sb.dir, tests, python, paths, extra_pytest_args)
+                    rc, failed, tail = run_pytest(sb.dir, tests, python, paths, extra_pytest_args,
+                                                  timeout=timeout)
                 finally:
                     sb.restore(m, original)
                 v = _classify(m, rc, failed, tail)
@@ -351,8 +408,9 @@ def _find_root(start: Path) -> Path:
 def load(path: Path) -> Declaration:
     """Import a mutations file. It must define `MUTATIONS` (a sequence of `Mutation`);
     optionally `TESTS` (pytest targets, default the file's own directory), `PATHS`
-    (PYTHONPATH entries relative to the root, default ("src", ".")), `ROOT` (default: the
-    nearest ancestor holding pyproject.toml or .git) and `PYTHON` (interpreter)."""
+    (PYTHONPATH entries relative to the root, default ("src", ".")), `ROOT` (relative to the
+    declaration file; default: the nearest ancestor holding pyproject.toml or .git) and
+    `PYTHON` (interpreter)."""
     path = Path(path).resolve()
     spec = importlib.util.spec_from_file_location(f"_mutgate_decl_{path.stem}", path)
     if spec is None or spec.loader is None:
@@ -369,7 +427,8 @@ def load(path: Path) -> Declaration:
     dupes = sorted({n for n in names if names.count(n) > 1})
     if dupes:
         raise ValueError(f"{path}: duplicate mutation names {dupes}")
-    root = Path(getattr(mod, "ROOT", _find_root(path.parent))).resolve()
+    root_decl = getattr(mod, "ROOT", None)
+    root = (_find_root(path.parent) if root_decl is None else (path.parent / root_decl)).resolve()
     tests_default = str(path.parent.relative_to(root)) if root in path.parent.parents or root == path.parent else "tests"
     tests = tuple(getattr(mod, "TESTS", (tests_default,)))
     paths = tuple(getattr(mod, "PATHS", ("src", ".")))
