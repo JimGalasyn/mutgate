@@ -5,7 +5,9 @@
 - Record the v0.1.0 DOIs (concept 10.5281/zenodo.22649033, version 10.5281/zenodo.22649034) and add the PyPI, CI and DOI badges.
 - **A relative `--python` (or `PYTHON`) passed the existence check, then crashed with a
   traceback from the sandbox** (#1): the check ran in the caller's cwd, pytest in the
-  sandbox. The interpreter is now resolved to an absolute path once, before the run.
+  sandbox. The interpreter is now made absolute once, before the run: `--python` relative
+  to the caller's cwd, a declaration's `PYTHON` relative to the root like `ROOT` and
+  `PATHS` (a bare name is still looked up on `PATH`).
 - `test_run_verbose_only_keep_and_stop` no longer leaves a sandbox in `$TMPDIR` on every
   suite run (14 per self-check), and now asserts the kept directory exists (#2).
 

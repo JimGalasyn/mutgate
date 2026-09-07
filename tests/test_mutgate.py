@@ -466,6 +466,10 @@ class TestCliInProcess:
         assert "not found" in capsys.readouterr().err
         assert cli_main(["run", f, "--only", "typo"]) == 2
         assert "names no declared mutation" in capsys.readouterr().err
+        broken = TOY_TESTS + "\n\ndef test_already_red():\n    assert False\n"
+        (toy / "tests" / "test_toy.py").write_text(broken)
+        assert cli_main(["run", f]) == 2
+        assert "BASELINE RED" in capsys.readouterr().out
 
     def test_relative_python_resolves_from_the_callers_cwd(self, toy, capsys, monkeypatch):
         # issue #1: a relative --python exists here but not in the sandbox, where pytest runs
@@ -480,10 +484,24 @@ class TestCliInProcess:
         relative = capsys.readouterr().out
         assert cli_main(["run", f, "--python", str(wrapper)]) == 0
         assert capsys.readouterr().out == relative
-        broken = TOY_TESTS + "\n\ndef test_already_red():\n    assert False\n"
-        (toy / "tests" / "test_toy.py").write_text(broken)
+
+    def test_a_relative_declared_python_is_anchored_at_the_root(self, toy, capsys, monkeypatch):
+        # like ROOT and PATHS, a declaration's PYTHON is part of the project, not of the caller's cwd
+        (toy / ".tool").mkdir()
+        wrapper = toy / ".tool" / "py"
+        wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+        wrapper.chmod(0o755)
+        f = self._decl(toy, DECL + '\nPYTHON = ".tool/py"\n')
+        assert load(Path(f)).python == str(wrapper)
+        elsewhere = toy.parent / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)             # cwd-relative, .tool/py would not exist
+        assert cli_main(["run", f]) == 0
+        assert "2 OK" in capsys.readouterr().out
+        f = self._decl(toy, DECL + '\nPYTHON = "python-that-does-not-exist"\n')
+        assert load(Path(f)).python == "python-that-does-not-exist"   # a bare name is left to PATH
         assert cli_main(["run", f]) == 2
-        assert "BASELINE RED" in capsys.readouterr().out
+        assert "not found" in capsys.readouterr().err
 
     def test_module_entry_point(self, toy):
         import os
