@@ -7,6 +7,7 @@ declaration cannot be loaded.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -56,9 +57,15 @@ def main(argv=None) -> int:
         return 0
     log = (lambda s: print(f"mutgate: {s}", file=sys.stderr, flush=True)) if args.verbose else None
     python = args.python or decl.python or sys.executable
-    if not (Path(python).is_file() or shutil.which(python)):
+    # absolutise here, in the caller's cwd: pytest runs with cwd=sandbox, where a relative
+    # path resolves to nothing (issue #1). which() first keeps a bare `python3.12` working,
+    # but returns a path containing a separator verbatim, hence abspath; not resolve(), which
+    # would follow a venv's bin/python symlink to the base interpreter and lose the venv.
+    found = shutil.which(python) or (python if Path(python).is_file() else None)
+    if found is None:
         print(f"mutgate: interpreter not found: {python}", file=sys.stderr)
         return 2
+    python = os.path.abspath(found)
     try:
         report = run(decl.mutations, decl.root, args.tests or decl.tests,
                      python=python, paths=decl.paths, only=args.only, keep=args.keep,
