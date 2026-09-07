@@ -1,5 +1,7 @@
 # mutgate
 
+[![PyPI](https://img.shields.io/pypi/v/mutgate.svg?cacheSeconds=3600)](https://pypi.org/project/mutgate/) [![CI](https://github.com/JimGalasyn/mutgate/actions/workflows/ci.yml/badge.svg)](https://github.com/JimGalasyn/mutgate/actions/workflows/ci.yml) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22649033.svg)](https://doi.org/10.5281/zenodo.22649033)
+
 **Named mutations as contracts on a test suite.** Each mutation is a deliberate, named
 change to the code under test, together with the list of tests it must turn red — or the
 statement that it must turn nothing red. `mutgate` applies each one in a sandbox copy, runs

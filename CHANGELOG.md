@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Record the v0.1.0 DOIs (concept 10.5281/zenodo.22649033, version 10.5281/zenodo.22649034) and add the PyPI, CI and DOI badges.
+
 Planned: a `control=` field naming an invariance's firing sibling, with a warning on an
 unpaired invariance, once a real declaration carries more than a handful of them.
 

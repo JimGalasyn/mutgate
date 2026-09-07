@@ -24,7 +24,11 @@ The version is static in three files and they must agree:
 gh release create vX.Y.Z --title "vX.Y.Z" --notes-file <(sed -n '/^## X.Y.Z/,/^## /p' CHANGELOG.md)
 ```
 
-## Before the first publish (one-time, web console)
+## Before the first publish (one-time, web console) — DONE 2026-09-07
+
+All four are in place (the first attempt failed with `invalid-publisher` because the PyPI
+form's Add button had not been pressed; `workflow_dispatch --ref v0.1.0` re-ran the publish
+against the existing tag). Kept for the record:
 
 - pypi.org → Publishing → add a **pending** trusted publisher: project `mutgate`, owner
   `JimGalasyn`, repository `mutgate`, workflow `publish-pypi.yml`, environment `pypi`.
@@ -34,3 +38,20 @@ gh release create vX.Y.Z --title "vX.Y.Z" --notes-file <(sed -n '/^## X.Y.Z/,/^#
 
 The `publish-release` skill in the Claude Code setup walks these steps for the sibling
 repositories (rafkit, run-farm, jax-morpho, jax-solitons, proc-warden); this one is the same.
+
+## After the first release: the DOIs
+
+Zenodo minted the concept DOI 10.5281/zenodo.22649033 (always the latest version) and the
+version DOI 10.5281/zenodo.22649034 for v0.1.0; both are in `CITATION.cff`, the concept DOI
+is the README badge. After every release, add the new version DOI to `CITATION.cff` and write
+its CHANGELOG line in the same commit — that commit is the first of the next release.
+
+## Verifying a release
+
+```bash
+python -m venv /tmp/relcheck && /tmp/relcheck/bin/pip install --no-cache-dir "mutgate==X.Y.Z"
+/tmp/relcheck/bin/mutgate run tests/mutations.py     # from any project with a declaration
+```
+
+The install proves the name resolves; running a declaration proves the package works. A
+green publish workflow is not evidence of either.
