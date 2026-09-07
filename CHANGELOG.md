@@ -13,6 +13,10 @@ project before it was fixed:
 - **`fires="Name"` (a bare string) was a silent false pass**: it became one-letter
   fragments matching every node id. Strings and empty fragments are refused.
 - **A typo in `--only`, or an emptied `MUTATIONS`, exited 0.** Both are usage errors (2).
+- **A project whose config stops at the first failure (`-x`, `--maxfail=N`) truncated the
+  fired set with a consistent-looking exit**, so an OVERREACH read OK. mutgate now owns
+  `--maxfail=0` after every user argument, and pytest's own "stopping after N failures"
+  line (a conftest can still force it) makes the run `ERROR`. Second review round.
 - Node ids containing " - " inside a parametrisation are no longer truncated; `--timeout`
   makes a hanging suite an `ERROR`; a missing `--python` is a usage error; `ROOT` is
   relative to the declaration file; the `git ls-files` sandbox and real PYTHONPATH

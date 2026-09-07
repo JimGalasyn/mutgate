@@ -183,6 +183,31 @@ class TestGatesThatCannotFail:
         r = _run([m], toy)
         assert r.verdicts[0].status == "ERROR" and "summary" in r.verdicts[0].detail
 
+    @pytest.mark.parametrize("addopts", ["-x", "--maxfail=1", "-x --maxfail=3"])
+    def test_a_project_that_stops_at_the_first_failure_still_yields_the_whole_set(self, toy, addopts):
+        """addopts -x / --maxfail=N truncates the fired set to one id with a consistent exit
+        code; the tie mutation named on only the tie test would read OK instead of
+        OVERREACH (review, second round). mutgate owns --maxfail=0 after every user arg."""
+        (toy / "pyproject.toml").write_text('[project]\nname = "toy"\nversion = "0"\n'
+                                            f'[tool.pytest.ini_options]\naddopts = "{addopts}"\n')
+        m = Mutation("tie-to-higher-index", "toy/engine.py",
+                     old="if (birth[a], -a) >= (birth[b], -b):", new="if (birth[a], a) >= (birth[b], b):",
+                     fires=("test_tie_goes_to_lower_index",))
+        r = _run([m], toy)
+        v = r.verdicts[0]
+        assert v.status == "OVERREACH" and len(v.fired) == 2, v
+
+    def test_a_conftest_that_forces_maxfail_is_an_error(self, toy):
+        """The belt: a conftest setting config.option.maxfail gets past the flag; pytest's
+        own "stopping after N failures" line makes the run ERROR, never a verdict."""
+        (toy / "tests" / "conftest.py").write_text(
+            "def pytest_configure(config):\n    config.option.maxfail = 1\n")
+        m = Mutation("tie-to-higher-index", "toy/engine.py",
+                     old="if (birth[a], -a) >= (birth[b], -b):", new="if (birth[a], a) >= (birth[b], b):",
+                     fires=("test_tie_goes_to_lower_index",))
+        r = _run([m], toy)
+        assert r.verdicts[0].status == "ERROR" and "cut short" in r.verdicts[0].detail
+
     def test_a_bare_string_or_empty_fragment_is_refused(self):
         """`fires="TestElderRule"` would become thirteen one-letter fragments, each matching
         every node id, and every contract would read OK (item 3)."""

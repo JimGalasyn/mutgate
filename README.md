@@ -61,6 +61,10 @@ the result is written into a design note as prose. `mutgate` makes that a checke
 - **a run whose failures cannot be read is an error, never a verdict.** If the project's
   pytest configuration suppresses the short summary (`--no-summary`), pytest's exit code
   says "failed" while nothing parses; that is reported as `ERROR`, not silently as `OK`.
+  And a run cut short is never a verdict either: `mutgate` owns `--maxfail=0` after every
+  user argument (a project's `-x` would truncate the fired set to one test), and a
+  `conftest` that forces `maxfail` anyway trips pytest's own "stopping after N failures"
+  line, which reads as `ERROR`.
 
 The sandbox holds the project's files but not its `.git`; a suite that shells out to git
 (a `setuptools_scm`-style version check, say) goes red at baseline and says so.

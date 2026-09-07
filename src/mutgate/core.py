@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -260,7 +261,9 @@ def _node_id(rest: str) -> str:
     return rest.strip()
 
 
-TIMEOUT = -9999   # return code standing for "pytest did not finish in time"
+_CUT_SHORT_LINE = re.compile(r"^!{3,} stopping after \d+ failures? !{3,}\s*$", re.MULTILINE)
+TIMEOUT = -9999     # return code standing for "pytest did not finish in time"
+CUT_SHORT = -9998   # pytest stopped early (maxfail), so the fired set is incomplete
 
 
 def run_pytest(cwd: Path, tests: Sequence[str], python: str = sys.executable,
@@ -278,8 +281,12 @@ def run_pytest(cwd: Path, tests: Sequence[str], python: str = sys.executable,
         pp.append(e["PYTHONPATH"])
     e["PYTHONPATH"] = os.pathsep.join(pp)
     e.setdefault("PYTHONDONTWRITEBYTECODE", "1")
+    # mutgate OWNS three flags: -rfE (the summary it reads), no:cacheprovider (a clean
+    # sandbox) and --maxfail=0 AFTER every user argument, because a contract needs the whole
+    # failure set and a project's addopts "-x" / "--maxfail=N" would truncate it to a
+    # consistent-looking single failure (review 2026-09-07, second round)
     cmd = [python, "-m", "pytest", "-q", "-rfE", "-p", "no:cacheprovider", "--no-header",
-           *extra_args, *tests]
+           *extra_args, "--maxfail=0", *tests]
     try:
         proc = subprocess.run(cmd, cwd=str(cwd), env=e, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired as exc:
@@ -297,6 +304,12 @@ def run_pytest(cwd: Path, tests: Sequence[str], python: str = sys.executable,
             if nid and nid not in failed:
                 failed.append(nid)
     tail = (proc.stdout + proc.stderr).strip().splitlines()[-25:]
+    if _CUT_SHORT_LINE.search(proc.stdout):
+        # the belt: pytest announces a truncated run ("!!! stopping after N failures !!!");
+        # a conftest setting config.option.maxfail can get past the flag above. Anchored to
+        # a whole line at column 0: a target's own captured output can quote the phrase
+        # (mutgate's suite does), and that must not read as a truncated run
+        return CUT_SHORT, failed, "the run was cut short (maxfail); the fired set is incomplete\n" + "\n".join(tail)
     return proc.returncode, failed, "\n".join(tail)
 
 
@@ -310,7 +323,7 @@ _NO_SUMMARY = ("pytest reported failures but none could be read from its short s
 
 def _classify(m: Mutation, rc: int, fired: list[str], tail: str) -> Verdict:
     fired_t = tuple(fired)
-    if rc == TIMEOUT:
+    if rc in (TIMEOUT, CUT_SHORT):
         return Verdict(m, "ERROR", fired_t, detail=tail)
     if rc == 1 and not fired:
         # the gate that cannot fail, in the classifier itself: an invisible mutation that
@@ -357,7 +370,7 @@ def run(mutations: Iterable[Mutation], root: Path, tests: Sequence[str],
     try:
         log(f"sandbox {sb.dir}")
         rc, failed, tail = run_pytest(sb.dir, tests, python, paths, extra_pytest_args, timeout=timeout)
-        if rc == TIMEOUT or (rc in (1, 2, 3, 4, 5) and not failed):
+        if rc in (TIMEOUT, CUT_SHORT) or (rc in (1, 2, 3, 4, 5) and not failed):
             note = _NO_SUMMARY if rc == 1 else ""
             report.baseline_error = f"baseline could not run (pytest exit {rc}) {note}\n{tail}"
             return report
