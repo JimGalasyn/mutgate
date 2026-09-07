@@ -103,7 +103,7 @@ A Python file (conventionally `tests/mutations.py`) defining:
 | `TESTS` | no | pytest targets; default: the declaration file's own directory |
 | `PATHS` | no | `PYTHONPATH` entries relative to the root; default `("src", ".")` |
 | `ROOT` | no | project root, relative to the declaration file; default: the nearest ancestor with `pyproject.toml` or `.git` |
-| `PYTHON` | no | interpreter to run pytest with; default: the one running `mutgate` |
+| `PYTHON` | no | interpreter to run pytest with: a bare name is looked up on `PATH`, a relative path is relative to the root; default: the one running `mutgate` |
 
 `Mutation(name, file, old, new, fires=(), may_fire=(), invisible=False, count=1, note="")`.
 Entries in `fires` and `may_fire` are substrings of pytest node ids, so `"TestElderRule"`,

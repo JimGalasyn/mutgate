@@ -7,6 +7,8 @@ copy of the tie rule, so the OVERREACH verdict has something real to catch.
 from __future__ import annotations
 
 import hashlib
+import re
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -443,7 +445,13 @@ class TestCliInProcess:
         f = self._decl(toy)
         assert cli_main(["run", f, "-v", "--only", "comment", "--keep"]) == 0
         err = capsys.readouterr().err
-        assert "sandbox" in err and "baseline green" in err and "comment: OK" in err
+        assert "baseline green" in err and "comment: OK" in err
+        # --keep actually kept it (issue #2: read the path back and remove it ourselves)
+        kept = Path(re.search(r"^mutgate: sandbox (.+)$", err, re.M).group(1))
+        try:
+            assert (kept / "toy" / "engine.py").is_file()
+        finally:
+            shutil.rmtree(kept, ignore_errors=True)
         bad = DECL.replace('fires=("TestCut",)', 'fires=("TestElderRule",)')
         f = self._decl(toy, bad)
         assert cli_main(["run", f, "-x"]) == 1
@@ -462,6 +470,38 @@ class TestCliInProcess:
         (toy / "tests" / "test_toy.py").write_text(broken)
         assert cli_main(["run", f]) == 2
         assert "BASELINE RED" in capsys.readouterr().out
+
+    def test_relative_python_resolves_from_the_callers_cwd(self, toy, capsys, monkeypatch):
+        # issue #1: a relative --python exists here but not in the sandbox, where pytest runs
+        f = self._decl(toy)
+        here = toy.parent / "elsewhere"          # outside the project: the sandbox copy must not carry it
+        here.mkdir()
+        monkeypatch.chdir(here)
+        wrapper = here / "py"
+        wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+        wrapper.chmod(0o755)
+        assert cli_main(["run", f, "--python", "./py"]) == 0
+        relative = capsys.readouterr().out
+        assert cli_main(["run", f, "--python", str(wrapper)]) == 0
+        assert capsys.readouterr().out == relative
+
+    def test_a_relative_declared_python_is_anchored_at_the_root(self, toy, capsys, monkeypatch):
+        # like ROOT and PATHS, a declaration's PYTHON is part of the project, not of the caller's cwd
+        (toy / ".tool").mkdir()
+        wrapper = toy / ".tool" / "py"
+        wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+        wrapper.chmod(0o755)
+        f = self._decl(toy, DECL + '\nPYTHON = ".tool/py"\n')
+        assert load(Path(f)).python == str(wrapper)
+        elsewhere = toy.parent / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)             # cwd-relative, .tool/py would not exist
+        assert cli_main(["run", f]) == 0
+        assert "2 OK" in capsys.readouterr().out
+        f = self._decl(toy, DECL + '\nPYTHON = "python-that-does-not-exist"\n')
+        assert load(Path(f)).python == "python-that-does-not-exist"   # a bare name is left to PATH
+        assert cli_main(["run", f]) == 2
+        assert "not found" in capsys.readouterr().err
 
     def test_module_entry_point(self, toy):
         import os

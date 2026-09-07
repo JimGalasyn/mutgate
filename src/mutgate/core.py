@@ -428,7 +428,8 @@ def load(path: Path) -> Declaration:
     optionally `TESTS` (pytest targets, default the file's own directory), `PATHS`
     (PYTHONPATH entries relative to the root, default ("src", ".")), `ROOT` (relative to the
     declaration file; default: the nearest ancestor holding pyproject.toml or .git) and
-    `PYTHON` (interpreter)."""
+    `PYTHON` (interpreter: a bare name is looked up on PATH, a relative path is relative to
+    the root)."""
     path = Path(path).resolve()
     spec = importlib.util.spec_from_file_location(f"_mutgate_decl_{path.stem}", path)
     if spec is None or spec.loader is None:
@@ -450,4 +451,7 @@ def load(path: Path) -> Declaration:
     tests_default = str(path.parent.relative_to(root)) if root in path.parent.parents or root == path.parent else "tests"
     tests = tuple(getattr(mod, "TESTS", (tests_default,)))
     paths = tuple(getattr(mod, "PATHS", ("src", ".")))
-    return Declaration(muts, root, tests, paths, getattr(mod, "PYTHON", None))
+    python = getattr(mod, "PYTHON", None)
+    if python is not None and not Path(python).is_absolute() and len(Path(python).parts) > 1:
+        python = str(root / python)      # a relative path is the project's, not the caller's cwd
+    return Declaration(muts, root, tests, paths, python)
