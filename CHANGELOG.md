@@ -5,8 +5,16 @@
 Planned: a `control=` field naming an invariance's firing sibling, with a warning on an
 unpaired invariance, once a real declaration carries more than a handful of them.
 
-Review of the first commit by a second session, everything below reproduced on the toy
-project before it was fixed:
+## 0.1.0 — 2026-09-07
+
+First release. `Mutation` with `fires` / `may_fire` / `invisible` / `count`; the sandbox
+copy via `git ls-files`; verdicts OK, DECORATION, OVERREACH, VISIBLE, NOT_APPLIED, ERROR;
+a red baseline aborts; `mutgate run` and `mutgate list`, with `--markdown` for build
+records. Extracted from three hand-rolled mutation harnesses written in one week across
+the Morphospace and abiogenesis repositories, after the third one found a duplicated
+convention by firing on the wrong kind of assertion.
+
+### Fixed before release, on a second session's review of the first commit
 
 - **A symlinked TMPDIR crashed every mutation** ("escapes the sandbox"): the sandbox
   directory is now resolved before the containment check. macOS keeps `/var` behind a
@@ -28,12 +36,3 @@ project before it was fixed:
   makes a hanging suite an `ERROR`; a missing `--python` is a usage error; `ROOT` is
   relative to the declaration file; the `git ls-files` sandbox and real PYTHONPATH
   shadowing are now tested; the `Framework :: Pytest` classifier (for plugins) is dropped.
-
-## 0.1.0 — 2026-09-07
-
-First release. `Mutation` with `fires` / `may_fire` / `invisible` / `count`; the sandbox
-copy via `git ls-files`; verdicts OK, DECORATION, OVERREACH, VISIBLE, NOT_APPLIED, ERROR;
-a red baseline aborts; `mutgate run` and `mutgate list`, with `--markdown` for build
-records. Extracted from three hand-rolled mutation harnesses written in one week across
-the Morphospace and abiogenesis repositories, after the third one found a duplicated
-convention by firing on the wrong kind of assertion.
