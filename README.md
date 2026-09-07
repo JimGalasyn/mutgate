@@ -53,7 +53,12 @@ the result is written into a design note as prose. `mutgate` makes that a checke
   *values*, the convention exists in two places that have drifted apart.
 - **an invariance is a mutation that must fire nothing.** `invisible=True` pins that the
   suite passes unchanged under the alternative convention; if it does not, the verdict is
-  `VISIBLE`.
+  `VISIBLE`. ⚠ An `OK` on an invariance is a *negative* result, and it is only as strong as
+  the evidence that the mutated line ran: a dead function, a site the named `TESTS` never
+  reach, or a suite that imports an installed copy instead of the sandbox all read `OK`
+  honestly. **Pair every invariance with a firing mutation at the same site in the same
+  declaration** — the known-positive control — so the file itself proves the site is
+  exercised by these tests. An unpaired `OK` on an invariance is unevidenced.
 - **the working tree is never touched.** Each mutation is applied and restored in a
   temporary copy (`git ls-files`, so uncommitted work is included and the venv is not), and
   the copy is put first on `PYTHONPATH` so an editable install elsewhere cannot shadow it.

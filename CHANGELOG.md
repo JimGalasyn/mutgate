@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+Planned: a `control=` field naming an invariance's firing sibling, with a warning on an
+unpaired invariance, once a real declaration carries more than a handful of them.
+
 Review of the first commit by a second session, everything below reproduced on the toy
 project before it was fixed:
 
