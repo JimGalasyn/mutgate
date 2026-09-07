@@ -63,6 +63,13 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 source = ["mutgate"]
+# The CLI is exercised in subprocesses (`python -m mutgate`) and every mutation run is a
+# pytest subprocess; without parallel mode plus coverage's subprocess patch those are
+# invisible and cli.py reports 0 % while being fully tested. pytest-cov combines the
+# per-process data files at the end of the session.
+parallel = true
+patch = ["subprocess"]
+sigterm = true
 
 [tool.coverage.report]
 exclude_also = [

@@ -409,3 +409,117 @@ class TestDeclarationAndCli:
         out = subprocess.run([sys.executable, "-m", "mutgate", "run", str(toy / "tests" / "mutations.py"),
                               "--only", "nope"], capture_output=True, text=True, env=env)
         assert out.returncode == 2 and "names no declared mutation" in out.stderr
+
+
+# ---------------------------------------------------------------------------------------
+# the CLI in-process (every command path, independent of subprocess coverage) and the
+# remaining core branches
+# ---------------------------------------------------------------------------------------
+
+from mutgate.cli import main as cli_main  # noqa: E402
+from mutgate.core import Verdict, _find_root  # noqa: E402
+
+
+class TestCliInProcess:
+    def _decl(self, toy, text=DECL):
+        (toy / "tests" / "mutations.py").write_text(text)
+        return str(toy / "tests" / "mutations.py")
+
+    def test_list(self, toy, capsys):
+        assert cli_main(["list", self._decl(toy)]) == 0
+        out = capsys.readouterr().out
+        assert "cut-strict" in out and "invisible" in out and "root " in out
+
+    def test_run_plain_and_markdown(self, toy, capsys):
+        f = self._decl(toy)
+        assert cli_main(["run", f]) == 0
+        out = capsys.readouterr().out
+        assert "cut-strict" in out and "2 OK" in out
+        assert cli_main(["run", f, "--markdown"]) == 0
+        out = capsys.readouterr().out
+        assert out.startswith("| mutation | must fire |") and "| OK |" in out
+
+    def test_run_verbose_only_keep_and_stop(self, toy, capsys):
+        f = self._decl(toy)
+        assert cli_main(["run", f, "-v", "--only", "comment", "--keep"]) == 0
+        err = capsys.readouterr().err
+        assert "sandbox" in err and "baseline green" in err and "comment: OK" in err
+        bad = DECL.replace('fires=("TestCut",)', 'fires=("TestElderRule",)')
+        f = self._decl(toy, bad)
+        assert cli_main(["run", f, "-x"]) == 1
+        out = capsys.readouterr().out
+        assert "DECORATION" in out and "comment" not in out.split("\n")[1]   # stopped after the first
+
+    def test_run_exit_2_paths(self, toy, capsys):
+        assert cli_main(["run", str(toy / "tests" / "nope.py")]) == 2
+        assert "cannot load" in capsys.readouterr().err
+        f = self._decl(toy)
+        assert cli_main(["run", f, "--python", "/no/such/python"]) == 2
+        assert "not found" in capsys.readouterr().err
+        assert cli_main(["run", f, "--only", "typo"]) == 2
+        assert "names no declared mutation" in capsys.readouterr().err
+        broken = TOY_TESTS + "\n\ndef test_already_red():\n    assert False\n"
+        (toy / "tests" / "test_toy.py").write_text(broken)
+        assert cli_main(["run", f]) == 2
+        assert "BASELINE RED" in capsys.readouterr().out
+
+    def test_module_entry_point(self, toy):
+        import os
+        env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")}
+        out = subprocess.run([sys.executable, "-m", "mutgate", "--version"], capture_output=True, text=True, env=env)
+        assert out.returncode == 0 and "mutgate 0." in out.stdout
+
+
+class TestRemainingBranches:
+    def test_mutation_field_validation(self):
+        with pytest.raises(ValueError, match="needs a name"):
+            Mutation("", "f", old="a", new="b", fires=("t",))
+        with pytest.raises(ValueError, match="non-empty"):
+            Mutation("x", "f", old="", new="b", fires=("t",))
+        with pytest.raises(ValueError, match="count"):
+            Mutation("x", "f", old="a", new="b", fires=("t",), count=0)
+        with pytest.raises(ValueError):
+            Verdict(Mutation("x", "f", old="a", new="b", fires=("t",)), "MAYBE")
+
+    def test_missing_file_is_not_applied(self, toy):
+        m = Mutation("ghost", "toy/nowhere.py", old="a", new="b", fires=("TestCut",))
+        r = _run([m], toy)
+        assert r.verdicts[0].status == "NOT_APPLIED" and "no such file" in r.verdicts[0].detail
+
+    def test_only_filters_and_stop_early_stops(self, toy):
+        good = Mutation("cut-strict", "toy/engine.py", old="if x >= s]", new="if x > s]", fires=("TestCut",))
+        bad = Mutation("wrong", "toy/engine.py", old="if x >= s]", new="if x > s]", fires=("TestElderRule",))
+        r = _run([good, bad], toy, only=["cut-strict"])
+        assert [v.mutation.name for v in r.verdicts] == ["cut-strict"]
+        r = _run([bad, good], toy, stop_early=True)
+        assert [v.status for v in r.verdicts] == ["DECORATION"]      # stopped before `good`
+
+    def test_report_table_and_summary_forms(self, toy):
+        m = Mutation("cut-strict", "toy/engine.py", old="if x >= s]", new="if x > s]", fires=("TestCut",))
+        r = _run([m], toy)
+        assert "1 OK" in r.summary() and "OK" in r.table() and "| cut-strict |" in r.markdown()
+        from mutgate.core import Report
+        empty = Report(root=toy, tests=("tests",))
+        assert empty.summary() == "no mutations"
+        empty.baseline_error = "pytest exit 4"
+        assert "BASELINE ERROR" in empty.table()
+
+    def test_table_renders_every_verdict_kind(self, toy):
+        vis = Mutation("tie", "toy/engine.py", old="if (birth[a], -a) >= (birth[b], -b):",
+                       new="if (birth[a], a) >= (birth[b], b):", invisible=True)
+        ghost = Mutation("ghost", "toy/nowhere.py", old="a", new="b", fires=("TestCut",))
+        r = _run([vis, ghost], toy)
+        table = r.table()
+        assert "VISIBLE" in table and "fired:" in table          # the invariance's fired lines
+        assert "NOT_APPLIED" in table and "no such file" in table  # the detail line
+
+    def test_load_failures_and_root_fallback(self, tmp_path):
+        bare = tmp_path / "bare"; bare.mkdir()
+        (bare / "m.txt").write_text("MUTATIONS = []\n")
+        with pytest.raises(ValueError, match="cannot import"):
+            load(bare / "m.txt")
+        (bare / "m.py").write_text("X = 1\n")
+        with pytest.raises(ValueError, match="no MUTATIONS"):
+            load(bare / "m.py")
+        # no pyproject.toml or .git anywhere up to the filesystem root -> the start dir itself
+        assert _find_root(bare) in (bare, *bare.parents)
