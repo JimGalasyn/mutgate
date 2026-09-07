@@ -1,0 +1,60 @@
+name: Publish to PyPI
+
+# Triggers on a published GitHub Release. The version is static (pyproject.toml,
+# src/mutgate/__init__.py, CITATION.cff) and must match the tag.
+#
+# Auth is OIDC trusted publishing, configured on pypi.org as a pending publisher for a
+# project that does not exist yet; the first successful run creates it. The four values
+# must match exactly: repository JimGalasyn/mutgate, workflow publish-pypi.yml,
+# environment pypi.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:   # to publish an already-tagged version (--ref vX.Y.Z)
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Version must match the tag
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(python -c 'import tomllib,pathlib;print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')"
+          echo "tag=$tag pyproject=$pkg"
+          [ "$tag" = "$pkg" ] || { echo "::error::tag v$tag != pyproject version $pkg"; exit 1; }
+      - name: Build sdist + wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+      - name: Check metadata
+        run: |
+          python -m pip install --upgrade twine
+          python -m twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

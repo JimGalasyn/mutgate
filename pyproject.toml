@@ -1,0 +1,72 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mutgate"
+version = "0.1.0"
+description = "Named mutations as contracts on a test suite: each mutation must turn exactly the tests it names red, or nothing at all."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [
+  { name = "James P. Galasyn" },
+  { name = "Claude Théodore" },
+]
+keywords = [
+  "mutation-testing", "pytest", "testing", "test-quality", "contracts",
+  "reproducibility", "scientific-software",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Framework :: Pytest",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Testing",
+]
+# No runtime dependencies, deliberately: pytest is invoked as a subprocess of whichever
+# interpreter owns the project under test, so mutgate never has to agree with it on versions.
+dependencies = []
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8",
+  "pytest-cov>=4",
+]
+
+[project.urls]
+Homepage = "https://github.com/JimGalasyn/mutgate"
+Issues = "https://github.com/JimGalasyn/mutgate/issues"
+Changelog = "https://github.com/JimGalasyn/mutgate/blob/main/CHANGELOG.md"
+
+[project.scripts]
+mutgate = "mutgate.cli:run_cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mutgate"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/", "tests/", "docs/",
+  "README.md", "CHANGELOG.md", "LICENSE", "CITATION.cff",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["mutgate"]
+
+[tool.coverage.report]
+exclude_also = [
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]

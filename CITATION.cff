@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+title: "mutgate: named mutations as contracts on a test suite"
+message: "If you use this software, please cite it using these metadata."
+type: software
+authors:
+  - given-names: James P.
+    family-names: Galasyn
+  - given-names: Claude
+    family-names: Théodore
+repository-code: "https://github.com/JimGalasyn/mutgate"
+url: "https://github.com/JimGalasyn/mutgate"
+abstract: >-
+  A dependency-free tool that turns "break the code on purpose and see whether the
+  test notices" into a checked artefact. Each mutation is a named, exact-string change
+  to one file of the project under test, applied in a sandbox copy, with a contract
+  naming the tests it must turn red or the statement that it must turn nothing red.
+  Verdicts distinguish a guard that does not fire (a decoration) from a mutation that
+  fires beyond its contract (the tell for a convention duplicated in two places) and
+  from an invariance that breaks; a mutation whose text is not found exactly once is
+  reported rather than silently skipped.
+keywords:
+  - mutation-testing
+  - pytest
+  - test-quality
+  - scientific-software
+  - reproducibility
+license: MIT
+version: 0.1.0
+date-released: "2026-09-07"
