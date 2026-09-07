@@ -1,0 +1,14 @@
+{
+  "title": "mutgate: named mutations as contracts on a test suite",
+  "upload_type": "software",
+  "access_right": "open",
+  "license": "MIT",
+  "creators": [
+    {"name": "Galasyn, James P."},
+    {"name": "Théodore, Claude"}
+  ],
+  "description": "A dependency-free tool that turns \"break the code on purpose and see whether the test notices\" into a checked artefact. Each mutation is a named, exact-string change to one file of the project under test, applied in a sandbox copy, with a contract naming the tests it must turn red or the statement that it must turn nothing red. Verdicts distinguish a guard that does not fire (a decoration) from a mutation that fires beyond its contract (the tell for a convention duplicated in two places) and from an invariance that breaks; a mutation whose text is not found exactly once is reported rather than silently skipped, and a verdict is only ever issued on a run pytest itself says finished.",
+  "keywords": [
+    "mutation-testing", "pytest", "test-quality", "scientific-software", "reproducibility"
+  ]
+}
