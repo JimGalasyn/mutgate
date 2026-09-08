@@ -2,7 +2,18 @@
 
 ## Unreleased
 
+Planned: a `control=` field naming an invariance's firing sibling, with a warning on an
+unpaired invariance, once a real declaration carries more than a handful of them.
+
+## 0.1.1 — 2026-09-08
+
+The two issues from the first use in another repository, plus housekeeping after the
+release.
+
 - Record the v0.1.0 DOIs (concept 10.5281/zenodo.22649033, version 10.5281/zenodo.22649034) and add the PyPI, CI and DOI badges.
+- CI passes `CODECOV_TOKEN` and fails the upload loudly: five runs had uploaded nothing while green.
+- Coverage measures the CLI and every subprocess (the parallel + `patch=subprocess` modes);
+  in-process CLI tests and the remaining core branches take it from 72 % to 100 %.
 - **A relative `--python` (or `PYTHON`) passed the existence check, then crashed with a
   traceback from the sandbox** (#1): the check ran in the caller's cwd, pytest in the
   sandbox. The interpreter is now made absolute once, before the run: `--python` relative
@@ -10,9 +21,8 @@
   `PATHS` (a bare name is still looked up on `PATH`).
 - `test_run_verbose_only_keep_and_stop` no longer leaves a sandbox in `$TMPDIR` on every
   suite run (14 per self-check), and now asserts the kept directory exists (#2).
-
-Planned: a `control=` field naming an invariance's firing sibling, with a warning on an
-unpaired invariance, once a real declaration carries more than a handful of them.
+- Three new self-contracts pin the fixes (`python-unresolved`, `keep-ignored`,
+  `declared-python-cwd-anchored`); the self-check reads 16 OK.
 
 ## 0.1.0 — 2026-09-07
 

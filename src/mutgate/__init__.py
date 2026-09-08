@@ -18,5 +18,5 @@ VISIBLE (an invariance was broken), NOT_APPLIED (the text was not found), ERROR.
 
 from .core import Mutation, Report, Verdict, load, run
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __all__ = ["Mutation", "Report", "Verdict", "load", "run", "__version__"]
