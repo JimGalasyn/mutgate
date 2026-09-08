@@ -35,3 +35,6 @@ identifiers:
   - type: doi
     value: 10.5281/zenodo.22649034
     description: Version DOI (v0.1.0, first PyPI release)
+  - type: doi
+    value: 10.5281/zenodo.22661120
+    description: Version DOI (v0.1.1)

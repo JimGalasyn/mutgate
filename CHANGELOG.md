@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Record the v0.1.1 version DOI (10.5281/zenodo.22661120).
+
 Planned: a `control=` field naming an invariance's firing sibling, with a warning on an
 unpaired invariance, once a real declaration carries more than a handful of them.
 
